@@ -76,4 +76,4 @@ static const float kRowH       = 26.0;   // row height per entry
 MIT License
 
 ## Credit
-Made by Mehran Goudarzi, because macOS should have had this out of the box (jesuuuuus).
+Made by Mehran Goudarzi and Mehrzad Sepahi, because macOS should have had this out of the box (jesuuuuus).
