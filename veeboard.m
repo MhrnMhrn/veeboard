@@ -1,6 +1,6 @@
 /*  veeboard.m  ──────────────────────────────────────────────────────────────
  *  Minimal clipboard history pop-up for macOS     (Objective-C / Cocoa)
- *  • Trigger based: listens to ⌘C / ⌘X (adds to history) and Ctrl+Option+V
+ *  • Trigger based: listens to ⌘C / ⌘X (adds to history) and Command+Shift+V
  *  • Keeps last 5 plain text snippets (modify if you want more)
  *  • Tiny floating NSPanel; click a row > restores text to clipboard
  *
@@ -16,7 +16,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <ApplicationServices/ApplicationServices.h>
 
-static const int   kHistoryMax = 5;
+static const int   kHistoryMax = 10;
 static const float kPanelW     = 320.0;
 static const float kRowH       = 26.0;
 
@@ -41,11 +41,12 @@ static NSString *Elide(NSString *s) {
         NSRect frame = NSMakeRect(0, 0, kPanelW, kRowH * kHistoryMax);
         self.panel = [[NSPanel alloc] initWithContentRect:frame
                                                 styleMask:(NSWindowStyleMaskTitled |
-                                                           NSWindowStyleMaskUtilityWindow)
+                                                           NSWindowStyleMaskUtilityWindow |
+                                                           NSWindowStyleMaskNonactivatingPanel)
                                                   backing:NSBackingStoreBuffered
                                                     defer:NO];
         self.panel.level = NSStatusWindowLevel;
-        self.panel.hidesOnDeactivate = YES;
+        self.panel.hidesOnDeactivate = NO;
         self.panel.movableByWindowBackground = YES;
     }
 
@@ -79,6 +80,24 @@ static NSString *Elide(NSString *s) {
     [self.history removeObjectAtIndex:idx];
     [self.history insertObject:text atIndex:0];
     [self.panel orderOut:nil];
+    // Simulate Command+V to paste the content
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Create and post Command+V key down event
+        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+        CGEventRef cmdVDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, true);
+        CGEventSetFlags(cmdVDown, kCGEventFlagMaskCommand);
+        CGEventPost(kCGSessionEventTap, cmdVDown);
+
+        // Post key up event
+        CGEventRef cmdVUp = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, false);
+        CGEventSetFlags(cmdVUp, kCGEventFlagMaskCommand);
+        CGEventPost(kCGSessionEventTap, cmdVUp);
+
+        // Clean up
+        CFRelease(cmdVDown);
+        CFRelease(cmdVUp);
+        CFRelease(source);
+    });
 }
 
 - (void)addClipboardText:(NSString *)t {
@@ -94,9 +113,9 @@ static NSString *Elide(NSString *s) {
     if (self.panel.isVisible) {
         [self.panel orderOut:nil];
     } else {
-        [NSApp activateIgnoringOtherApps:YES];
+        //[NSApp activateIgnoringOtherApps:YES];
         [self.panel center];
-        [self.panel makeKeyAndOrderFront:nil];
+        [self.panel orderFront:nil];
     }
 }
 
@@ -115,7 +134,7 @@ static CGEventRef copyTap(CGEventTapProxy proxy,
         CGEventKeyboardGetUnicodeString(event, 1, &n, &c);
         if (n == 1 && (c == 'c' || c == 'x')) {
             VeeboardApp *app = (__bridge VeeboardApp *)refcon;
-            dispatch_async(dispatch_get_main_queue(), ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 NSString *s = [[NSPasteboard generalPasteboard]
                                stringForType:NSPasteboardTypeString];
                 [app addClipboardText:s];
@@ -131,8 +150,8 @@ static CGEventRef hotTap(CGEventTapProxy proxy,
                          void *refcon)
 {
     CGEventFlags f = CGEventGetFlags(event);
-    if ((f & (kCGEventFlagMaskControl|kCGEventFlagMaskAlternate))
-          == (kCGEventFlagMaskControl|kCGEventFlagMaskAlternate)) {
+    if ((f & (kCGEventFlagMaskCommand|kCGEventFlagMaskShift))
+        == (kCGEventFlagMaskCommand|kCGEventFlagMaskShift)) {
         CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(
             event, kCGKeyboardEventKeycode
         );
@@ -181,14 +200,14 @@ int main(int argc, const char * argv[]) {
         CFRelease(src1);
         CFRelease(tap1);
 
-        // Ctrl+Option+V
+        // Command+Shift+V
         CFMachPortRef tap2 = CGEventTapCreate(
             kCGSessionEventTap, kCGHeadInsertEventTap,
             kCGEventTapOptionDefault, mask,
             hotTap, (__bridge void *)delegate
         );
         if (!tap2) {
-            NSLog(@"ERROR: cannot tap Ctrl-Opt-V; check Accessibility");
+            NSLog(@"ERROR: cannot tap Command-Shift-V; check Accessibility");
             return 1;
         }
         CFRunLoopSourceRef src2 = CFMachPortCreateRunLoopSource(
@@ -198,7 +217,7 @@ int main(int argc, const char * argv[]) {
         CFRelease(src2);
         CFRelease(tap2);
 
-        NSLog(@"Veeboard started. Use ⌘C/⌘X to record, Ctrl+Option+V to show.");
+        NSLog(@"Veeboard started. Use ⌘C/⌘X to record, Command+Shift+V to show.");
         [NSApp run];
     }
     return 0;
