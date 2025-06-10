@@ -2,7 +2,7 @@
 macOS Clipboard History like Windows 11 
 
 
-**Veeboard** is a minimal clipboard history utility for macOS, inspired by Windows 11’s native clipboard history (Win+V). It tracks recent text copies (⌘C / ⌘X) and lets you quickly recall and reuse snippets via a small floating panel triggered by **Ctrl+Option+V**.
+**Veeboard** is a minimal clipboard history utility for macOS, inspired by Windows 11’s native clipboard history (Win+V). It tracks recent text copies (⌘C / ⌘X) and lets you quickly recall and reuse snippets via a small floating panel triggered by **Command+Shift+V**.
 
 It’s lightweight, has no UI beyond the panel, and is built with Objective-C and Cocoa.
 
@@ -18,7 +18,7 @@ Veeboard shows a floating panel of your recent copied snippets (you click on an 
 - Keeps a history of your last **5** plaintext snippets (configurable)
 - Click to copy from a floating panel
 - Auto updates clipboard on ⌘C or ⌘X
-- Trigger panel with **Ctrl+Option+V**
+- Trigger panel with **Command+Shift+V**.
 - Does not run in the dock or menu bar
 - macOS native (no dependencies)
 
@@ -48,14 +48,14 @@ Add the compiled veeboard binary to the list
 You should see this log line:
 
 ```bash
-veeboard started. Use Cmd-C/Cmd-X to record, Ctrl-Opt-V to show.
+veeboard started. Use Cmd-C/Cmd-X to record, Command+Shift+V to show.
 ```
 
 ## Usage
 
 - ⌘C / ⌘X — adds copied plain text to history
 
-- Ctrl+Option+V — shows the panel of recent snippets
+- Command+Shift+V — shows the panel of recent snippets
 
 - Click a row — restores the item to your clipboard and closes the panel
 
