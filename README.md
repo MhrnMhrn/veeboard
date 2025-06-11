@@ -40,6 +40,10 @@ Open System Settings > Privacy & Security > Accessibility
 
 Add the compiled veeboard binary to the list
 
+Open System Settings > Privacy & Security > Input Monitoring
+
+Allow Terminal.
+
 ### 3. Run:
 
 ```bash
