@@ -30,11 +30,27 @@ static NSString *Elide(NSString *s) {
 @interface VeeboardApp : NSObject <NSApplicationDelegate>
 @property (nonatomic, strong) NSMutableArray<NSString*> *history;
 @property (nonatomic, strong) NSPanel *panel;
+@property (nonatomic, strong) NSSound *clipSound; // Added property declaration
 - (void)addClipboardText:(NSString*)t;
 - (void)togglePanel;
 @end
 
 @implementation VeeboardApp
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        NSString *soundPath = [[NSBundle mainBundle] pathForResource:@"tick" ofType:@"wav"];
+        if (soundPath) {
+            self.clipSound = [[NSSound alloc] initWithContentsOfFile:soundPath byReference:YES];
+            [self.clipSound setVolume:0.5];
+        } else {
+            NSLog(@"WARNING: tick.wav not found in main bundle");
+        }
+    }
+    return self;
+}
+
 
 - (void)rebuildPanel {
     if (!self.panel) {
@@ -61,15 +77,32 @@ static NSString *Elide(NSString *s) {
             kRowH
         )];
         btn.bezelStyle = NSBezelStyleTexturedSquare;
-        btn.title      = Elide(snippet);
-        btn.tag        = (NSInteger)idx;
-        btn.target     = self;
-        btn.action     = @selector(buttonClicked:);
-        btn.toolTip    = snippet;
+        btn.title = Elide(snippet);
+        btn.tag = (NSInteger)idx;
+        btn.target = self;
+        btn.action = @selector(buttonClicked:);
+        btn.toolTip = snippet;
+
+        // Create an icon for "⌘N"
+        NSString *cmdText = [NSString stringWithFormat:@"⌘%ld", idx + 1];
+        NSImage *icon = [[NSImage alloc] initWithSize:NSMakeSize(24, 24)];
+        [icon lockFocus];
+        NSDictionary *attributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:14],
+            NSForegroundColorAttributeName: [NSColor blackColor]
+        };
+        NSSize textSize = [cmdText sizeWithAttributes:attributes];
+        [cmdText drawAtPoint:NSMakePoint((24 - textSize.width) / 2, (24 - textSize.height) / 2)
+              withAttributes:attributes];
+        [icon unlockFocus];
+
+        btn.image = icon;
+        btn.imagePosition = NSImageLeft; // Icon on the left, title on the right
+        btn.imageScaling = NSImageScaleNone;
+
         [content addSubview:btn];
     }];
 }
-
 - (void)buttonClicked:(NSButton*)sender {
     NSUInteger idx = (NSUInteger)sender.tag;
     NSString *text = self.history[idx];
@@ -101,11 +134,15 @@ static NSString *Elide(NSString *s) {
 }
 
 - (void)addClipboardText:(NSString *)t {
+    if (self.clipSound) {
+            [self.clipSound play];
+        }
     if (!t.length) return;
     if (self.history.count && [self.history[0] isEqualToString:t]) return;
     [self.history insertObject:t atIndex:0];
     if (self.history.count > kHistoryMax)
         [self.history removeLastObject];
+    
 }
 
 - (void)togglePanel {
@@ -149,20 +186,53 @@ static CGEventRef hotTap(CGEventTapProxy proxy,
                          CGEventRef event,
                          void *refcon)
 {
-    CGEventFlags f = CGEventGetFlags(event);
-    if ((f & (kCGEventFlagMaskCommand|kCGEventFlagMaskShift))
-        == (kCGEventFlagMaskCommand|kCGEventFlagMaskShift)) {
-        CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(
-            event, kCGKeyboardEventKeycode
-        );
+    if (type != kCGEventKeyDown) return event;
+
+    CGEventFlags flags = CGEventGetFlags(event);
+    VeeboardApp *app = (__bridge VeeboardApp *)refcon;
+
+    // Handle Command+Shift+V to toggle panel
+    if ((flags & (kCGEventFlagMaskCommand | kCGEventFlagMaskShift)) == (kCGEventFlagMaskCommand | kCGEventFlagMaskShift)) {
+        CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
         if (kc == kVK_ANSI_V) {
-            VeeboardApp *app = (__bridge VeeboardApp *)refcon;
             dispatch_async(dispatch_get_main_queue(), ^{
                 [app togglePanel];
             });
-            return NULL;
+            return NULL; // Consume the event
         }
     }
+
+    // Handle Command+<number> when panel is visible
+    if ((flags & kCGEventFlagMaskCommand) == kCGEventFlagMaskCommand && app.panel.isVisible) {
+        CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+        NSUInteger idx = NSNotFound;
+
+        // Map number keys (0-9) to indices
+        switch (kc) {
+            case kVK_ANSI_1: idx = 0; break;
+            case kVK_ANSI_2: idx = 1; break;
+            case kVK_ANSI_3: idx = 2; break;
+            case kVK_ANSI_4: idx = 3; break;
+            case kVK_ANSI_5: idx = 4; break;
+            case kVK_ANSI_6: idx = 5; break;
+            case kVK_ANSI_7: idx = 6; break;
+            case kVK_ANSI_8: idx = 7; break;
+            case kVK_ANSI_9: idx = 8; break;
+            case kVK_ANSI_0: idx = 9; break;
+            default: break;
+        }
+
+        if (idx != NSNotFound && idx < app.history.count) {
+            // Simulate button click
+            NSButton *button = [[NSButton alloc] init];
+            button.tag = (NSInteger)idx;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [app buttonClicked:button];
+            });
+            return NULL; // Consume the event
+        }
+    }
+
     return event;
 }
 
