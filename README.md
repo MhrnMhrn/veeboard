@@ -31,10 +31,7 @@ Veeboard shows a floating panel of your recent copied snippets (you click on an 
 ```bash
 git clone https://github.com/MhrnMhrn/veeboard.git
 cd veeboard
-clang -fobjc-arc \
-           -framework Cocoa \
-           -framework ApplicationServices \
-           -o veeboard veeboard.m
+clang -fobjc-arc -framework Cocoa -framework ApplicationServices -o veeboard veeboard.m
 ```
 
 ### 2. Grant Accessibility access:
