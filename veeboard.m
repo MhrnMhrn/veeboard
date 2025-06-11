@@ -1,8 +1,9 @@
 /*  veeboard.m  ──────────────────────────────────────────────────────────────
  *  Minimal clipboard history pop-up for macOS     (Objective-C / Cocoa)
  *  • Trigger based: listens to ⌘C / ⌘X (adds to history) and Command+Shift+V
- *  • Keeps last 5 plain text snippets (modify if you want more)
+ *  • Keeps last 10 plain text snippets
  *  • Tiny floating NSPanel; click a row > restores text to clipboard
+ *  • Click outside panel to dismiss
  *
  *  Build:
  *    clang -fobjc-arc \
@@ -31,6 +32,7 @@ static NSString *Elide(NSString *s) {
 @property (nonatomic, strong) NSMutableArray<NSString*> *history;
 @property (nonatomic, strong) NSPanel *panel;
 @property (nonatomic, strong) NSSound *clipSound;
+@property (nonatomic, strong) id eventMonitor;
 - (void)addClipboardText:(NSString*)t;
 - (void)togglePanel;
 @end
@@ -45,10 +47,11 @@ static NSString *Elide(NSString *s) {
         Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink
         */
         self.clipSound = [NSSound soundNamed:@"Frog"];
-        if (self.clipSound)
+        if (self.clipSound) {
             [self.clipSound setVolume:0.5];
-        else
+        } else {
             NSLog(@"WARNING: system sound “Frog” not available");
+        }
     }
     return self;
 }
@@ -68,7 +71,6 @@ static NSString *Elide(NSString *s) {
     }
     NSView *content = self.panel.contentView;
     [content.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
-
     [self.history enumerateObjectsUsingBlock:^(NSString *snippet, NSUInteger idx, BOOL *stop) {
         NSButton *btn = [[NSButton alloc] initWithFrame:NSMakeRect(
             0,
@@ -82,19 +84,17 @@ static NSString *Elide(NSString *s) {
         btn.target = self;
         btn.action = @selector(buttonClicked:);
         btn.toolTip = snippet;
-
         NSString *cmdText = [NSString stringWithFormat:@"⌘%ld", idx + 1];
-        NSImage *icon = [[NSImage alloc] initWithSize:NSMakeSize(24, 24)];
+        NSImage *icon = [[NSImage alloc] initWithSize:NSMakeSize(24,24)];
         [icon lockFocus];
         NSDictionary *attrs = @{
             NSFontAttributeName: [NSFont systemFontOfSize:14],
             NSForegroundColorAttributeName: [NSColor blackColor]
         };
         NSSize ts = [cmdText sizeWithAttributes:attrs];
-        [cmdText drawAtPoint:NSMakePoint((24 - ts.width)/2, (24 - ts.height)/2)
+        [cmdText drawAtPoint:NSMakePoint((24-ts.width)/2,(24-ts.height)/2)
              withAttributes:attrs];
         [icon unlockFocus];
-
         btn.image = icon;
         btn.imagePosition = NSImageLeft;
         btn.imageScaling = NSImageScaleNone;
@@ -108,21 +108,21 @@ static NSString *Elide(NSString *s) {
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     [pb clearContents];
     [pb setString:text forType:NSPasteboardTypeString];
-
     [self.history removeObjectAtIndex:idx];
     [self.history insertObject:text atIndex:0];
     [self.panel orderOut:nil];
-
+    if (self.eventMonitor) {
+        [NSEvent removeMonitor:self.eventMonitor];
+        self.eventMonitor = nil;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
         CGEventRef down = CGEventCreateKeyboardEvent(src, kVK_ANSI_V, true);
         CGEventSetFlags(down, kCGEventFlagMaskCommand);
         CGEventPost(kCGSessionEventTap, down);
-
         CGEventRef up = CGEventCreateKeyboardEvent(src, kVK_ANSI_V, false);
         CGEventSetFlags(up, kCGEventFlagMaskCommand);
         CGEventPost(kCGSessionEventTap, up);
-
         CFRelease(down);
         CFRelease(up);
         CFRelease(src);
@@ -140,11 +140,29 @@ static NSString *Elide(NSString *s) {
 
 - (void)togglePanel {
     [self rebuildPanel];
-    if (self.panel.isVisible)
+    if (self.panel.isVisible) {
         [self.panel orderOut:nil];
-    else {
+        if (self.eventMonitor) {
+            [NSEvent removeMonitor:self.eventMonitor];
+            self.eventMonitor = nil;
+        }
+    } else {
         [self.panel center];
         [self.panel orderFront:nil];
+        __weak typeof(self) weakSelf = self;
+        self.eventMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:
+            (NSEventMaskLeftMouseDown|NSEventMaskRightMouseDown)
+            handler:^(NSEvent *e) {
+                __strong typeof(weakSelf) strong = weakSelf;
+                if (!strong) return;
+                NSPoint loc = e.locationInWindow;
+                if (!NSPointInRect(loc, strong.panel.frame)) {
+                    [strong.panel orderOut:nil];
+                    [NSEvent removeMonitor:strong.eventMonitor];
+                    strong.eventMonitor = nil;
+                }
+            }
+        ];
     }
 }
 
@@ -159,7 +177,7 @@ static CGEventRef copyTap(CGEventTapProxy proxy,
     if (flags & kCGEventFlagMaskCommand) {
         UniChar c; UniCharCount n;
         CGEventKeyboardGetUnicodeString(event, 1, &n, &c);
-        if (n == 1 && (c=='c' || c=='x')) {
+        if (n==1 && (c=='c'||c=='x')) {
             VeeboardApp *app = (__bridge VeeboardApp*)refcon;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1*NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
@@ -177,21 +195,19 @@ static CGEventRef hotTap(CGEventTapProxy proxy,
                          CGEventRef event,
                          void *refcon)
 {
-    if (type != kCGEventKeyDown) return event;
+    if (type!=kCGEventKeyDown) return event;
     CGEventFlags flags = CGEventGetFlags(event);
     VeeboardApp *app = (__bridge VeeboardApp*)refcon;
-
-    // Command+Shift+V
-    if ((flags & (kCGEventFlagMaskCommand|kCGEventFlagMaskShift)) == (kCGEventFlagMaskCommand|kCGEventFlagMaskShift)) {
+    if ((flags & (kCGEventFlagMaskCommand|kCGEventFlagMaskShift))
+        == (kCGEventFlagMaskCommand|kCGEventFlagMaskShift)) {
         CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-        if (kc == kVK_ANSI_V) {
+        if (kc==kVK_ANSI_V) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [app togglePanel];
             });
             return NULL;
         }
     }
-    // Cmd+number when panel visible
     if ((flags & kCGEventFlagMaskCommand)==kCGEventFlagMaskCommand && app.panel.isVisible) {
         CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
         NSUInteger idx = NSNotFound;
@@ -234,7 +250,10 @@ int main(int argc, const char * argv[]) {
             kCGEventTapOptionDefault, mask,
             copyTap, (__bridge void*)delegate
         );
-        if (!tap1) { NSLog(@"ERROR: cannot tap Cmd-C/Cmd-X"); return 1; }
+        if (!tap1) {
+            NSLog(@"ERROR: cannot tap Cmd-C/Cmd-X; check Accessibility");
+            return 1;
+        }
         CFRunLoopSourceRef src1 = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap1, 0);
         CFRunLoopAddSource(CFRunLoopGetMain(), src1, kCFRunLoopCommonModes);
         CFRelease(src1);
@@ -245,7 +264,10 @@ int main(int argc, const char * argv[]) {
             kCGEventTapOptionDefault, mask,
             hotTap, (__bridge void*)delegate
         );
-        if (!tap2) { NSLog(@"ERROR: cannot tap Cmd-Shift-V"); return 1; }
+        if (!tap2) {
+            NSLog(@"ERROR: cannot tap Cmd-Shift-V; check Accessibility");
+            return 1;
+        }
         CFRunLoopSourceRef src2 = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap2, 0);
         CFRunLoopAddSource(CFRunLoopGetMain(), src2, kCFRunLoopCommonModes);
         CFRelease(src2);
