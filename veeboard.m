@@ -6,7 +6,7 @@
  *  • Click outside panel to dismiss
  *
  *  Build:
- *    clang -fobjc-arc \
+ *       clang -fobjc-arc \
  *          -framework Cocoa \
  *          -framework ApplicationServices \
  *          -o veeboard veeboard.m

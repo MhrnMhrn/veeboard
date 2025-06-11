@@ -15,7 +15,7 @@ Veeboard shows a floating panel of your recent copied snippets (you click on an 
 
 ## Features
 
-- Keeps a history of your last **5** plaintext snippets (configurable)
+- Keeps a history of your last **10** plaintext snippets (configurable)
 - Click to copy from a floating panel
 - Auto updates clipboard on ⌘C or ⌘X
 - Trigger panel with **Command+Shift+V**.
@@ -31,7 +31,10 @@ Veeboard shows a floating panel of your recent copied snippets (you click on an 
 ```bash
 git clone https://github.com/MhrnMhrn/veeboard.git
 cd veeboard
-clang -framework Cocoa -framework ApplicationServices -o veeboard veeboard.m
+clang -fobjc-arc \
+           -framework Cocoa \
+           -framework ApplicationServices \
+           -o veeboard veeboard.m
 ```
 
 ### 2. Grant Accessibility access:
