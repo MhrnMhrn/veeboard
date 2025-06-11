@@ -68,7 +68,7 @@ veeboard started. Use Cmd-C/Cmd-X to record, Command+Shift+V to show.
 Edit these constants in the source:
 
 ```objc
-static const int   kHistoryMax = 5;      // change to keep more snippets
+static const int   kHistoryMax = 10;      // change to keep more snippets
 static const float kPanelW     = 320.0;  // panel width
 static const float kRowH       = 26.0;   // row height per entry
 ```
