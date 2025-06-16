@@ -18,6 +18,7 @@ Veeboard shows a floating panel of your recent copied snippets (you click on an 
 - Keeps a history of your last **10** plaintext snippets (configurable)
 - Click to copy from a floating panel
 - Auto updates clipboard on ⌘C or ⌘X
+- Also polls the clipboard for any change (menus, mouse, drag-and-drop)
 - Trigger panel with **Command+Shift+V**.
 - Does not run in the dock or menu bar
 - macOS native (no dependencies)
