@@ -1,6 +1,7 @@
 /*  veeboard.m  ──────────────────────────────────────────────────────────────
  *  Minimal clipboard history pop-up for macOS     (Objective-C / Cocoa)
  *  • Trigger based: listens to ⌘C / ⌘X (adds to history) and Command+Shift+V
+ *  • Also polls the clipboard for any change (menus, mouse, drag-and-drop)
  *  • Keeps last 10 plain text snippets
  *  • Tiny floating NSPanel; click a row > restores text to clipboard
  *  • Click outside panel to dismiss
@@ -20,12 +21,11 @@
 static const int   kHistoryMax = 10;
 static const float kPanelW     = 320.0;
 static const float kRowH       = 26.0;
+static const NSTimeInterval kPollInterval = 0.5; // seconds
 
 static NSString *Elide(NSString *s) {
     const NSUInteger max = 45;
-    return (s.length <= max)
-      ? s
-      : [NSString stringWithFormat:@"%@…", [s substringToIndex:max]];
+    return (s.length <= max) ? s : [NSString stringWithFormat:@"%@…", [s substringToIndex:max]];
 }
 
 @interface VeeboardApp : NSObject <NSApplicationDelegate>
@@ -33,27 +33,48 @@ static NSString *Elide(NSString *s) {
 @property (nonatomic, strong) NSPanel *panel;
 @property (nonatomic, strong) NSSound *clipSound;
 @property (nonatomic, strong) id eventMonitor;
+@property (nonatomic) NSInteger lastChangeCount;
 - (void)addClipboardText:(NSString*)t;
 - (void)togglePanel;
+- (void)checkClipboard:(NSTimer*)timer;
 @end
 
 @implementation VeeboardApp
 
 - (instancetype)init {
     if ((self = [super init])) {
-        /*
-        / Use macOS built-in sounds (you can change this to any of the system sounds you want)
-        here is the list:
-        Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink
-        */
         self.clipSound = [NSSound soundNamed:@"Frog"];
         if (self.clipSound) {
             [self.clipSound setVolume:0.5];
+            NSLog(@"Loaded system sound “Frog”");
         } else {
             NSLog(@"WARNING: system sound “Frog” not available");
         }
     }
     return self;
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    // init polling
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    self.lastChangeCount = pb.changeCount;
+    [NSTimer scheduledTimerWithTimeInterval:kPollInterval
+                                     target:self
+                                   selector:@selector(checkClipboard:)
+                                   userInfo:nil
+                                    repeats:YES];
+    NSLog(@"Veeboard started. Use ⌘C/⌘X to record, ⌘⇧V to show.");
+}
+
+- (void)checkClipboard:(NSTimer*)timer {
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    if (pb.changeCount != self.lastChangeCount) {
+        self.lastChangeCount = pb.changeCount;
+        NSString *s = [pb stringForType:NSPasteboardTypeString];
+        if (s) {
+            [self addClipboardText:s];
+        }
+    }
 }
 
 - (void)rebuildPanel {
@@ -92,7 +113,7 @@ static NSString *Elide(NSString *s) {
             NSForegroundColorAttributeName: [NSColor blackColor]
         };
         NSSize ts = [cmdText sizeWithAttributes:attrs];
-        [cmdText drawAtPoint:NSMakePoint((24-ts.width)/2,(24-ts.height)/2)
+        [cmdText drawAtPoint:NSMakePoint((24-ts.width)/2, (24-ts.height)/2)
              withAttributes:attrs];
         [icon unlockFocus];
         btn.image = icon;
@@ -273,7 +294,6 @@ int main(int argc, const char * argv[]) {
         CFRelease(src2);
         CFRelease(tap2);
 
-        NSLog(@"Veeboard started. Use ⌘C/⌘X to record, ⌘⇧V to show.");
         [NSApp run];
     }
     return 0;
